@@ -8,7 +8,7 @@ out vec2 lmcoord;
 out vec2 texcoord;
 out vec4 glcolor;
 out vec3 viewPos;
-out vec3 worldNormal;
+out vec3 viewNormal;
 out vec3 worldPos;     // Posición en mundo para micro-ondas estables (no se mueven con la cámara)
 out float waterTop;    // 1.0 = cara superior del agua, 0.0 = laterales
 
@@ -26,9 +26,10 @@ void main() {
     
     viewPos = (gl_ModelViewMatrix * position).xyz;
     vec3 n = gl_NormalMatrix * gl_Normal;
-    worldNormal = length(n) > 0.0001 ? normalize(n) : vec3(0.0, 1.0, 0.0);
+    float n2 = dot(n, n);
+    viewNormal = n2 > 1e-8 ? n * inversesqrt(n2) : vec3(0.0, 1.0, 0.0);
 
     // Calculado por vértice (barato) en lugar de por píxel
-    worldPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz + cameraPosition;
+    worldPos = mat3(gbufferModelViewInverse) * viewPos + gbufferModelViewInverse[3].xyz + cameraPosition;
     waterTop = step(0.9, gl_Normal.y);
 }

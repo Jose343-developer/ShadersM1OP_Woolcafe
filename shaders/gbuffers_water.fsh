@@ -1,19 +1,19 @@
 #version 150 compatibility
 
+/* DRAWBUFFERS:0 */
+
+#include "/lib/m1_common.glsl"
+
 uniform sampler2D texture;
 uniform sampler2D lightmap;
-uniform vec3 sunPosition;
-uniform vec3 upPosition;
 uniform mat4 gbufferModelView;
-uniform int heldBlockLightValue;
-uniform int heldBlockLightValue2;
 uniform float frameTimeCounter;
 
 in vec2 lmcoord;
 in vec2 texcoord;
 in vec4 glcolor;
 in vec3 viewPos;
-in vec3 worldNormal;
+in vec3 viewNormal;
 in vec3 worldPos;
 in float waterTop;
 
@@ -21,8 +21,8 @@ void main() {
     vec4 tex = texture2D(texture, texcoord);
     vec3 light = texture2D(lightmap, lmcoord).rgb;
 
-    vec3 viewDir = normalize(-viewPos);
-    vec3 normal = length(worldNormal) > 0.001 ? normalize(worldNormal) : vec3(0.0, 1.0, 0.0);
+    vec3 viewDir = -viewPos * inversesqrt(dot(viewPos, viewPos));
+    vec3 normal = viewNormal;
 
     // Micro-ondas analíticas (solo 3 cos, sin texturas extra ni passes: seguro para M1)
     // Perturban la normal para que los reflejos brillen como cristal en movimiento
@@ -32,8 +32,9 @@ void main() {
         float diag = cos((p.x + p.y) * 3.3 - t * 2.2) * 0.4;
         float dx = cos(p.x * 2.1 + t * 1.6) * 0.6 + diag;
         float dz = cos(p.y * 2.4 - t * 1.3) * 0.6 + diag;
-        vec3 rippleWorld = normalize(vec3(-dx * 0.07, 1.0, -dz * 0.07));
-        normal = normalize(mat3(gbufferModelView) * rippleWorld);
+        vec3 rippleWorld = vec3(-dx * 0.07, 1.0, -dz * 0.07);
+        rippleWorld *= inversesqrt(dot(rippleWorld, rippleWorld));
+        normal = mat3(gbufferModelView) * rippleWorld;
     }
 
     // Fresnel Schlick (agua F0 ≈ 0.02); pow(x,5) con multiplicaciones, más barato que pow()
@@ -42,15 +43,9 @@ void main() {
     float f2 = f * f;
     float fresnel = 0.02 + 0.98 * (f2 * f2 * f);
 
-    // Orientación celeste invariante a la rotación de cámara
-    vec3 sunDir = normalize(sunPosition);
-    vec3 upDir = length(upPosition) > 0.001 ? normalize(upPosition) : (length(gbufferModelView[1].xyz) > 0.001 ? normalize(gbufferModelView[1].xyz) : vec3(0.0, 1.0, 0.0));
-    float SdotU = dot(sunDir, upDir);
-
-    float dayFactor = clamp((SdotU + 0.05) / 0.15, 0.0, 1.0);
-
     // Reflejo especular del sol o luna: núcleo nítido + halo suave (aspecto cristalino)
-    vec3 celestialDir = (SdotU >= 0.0) ? sunDir : -sunDir;
+    // dayFactor / celestialSign vienen precalculados de CPU
+    vec3 celestialDir = sunPosition * (0.01 * celestialSign);
     vec3 reflectDir = reflect(-celestialDir, normal);
     float rDotV = max(dot(viewDir, reflectDir), 0.0);
     float soft = rDotV * rDotV;            // ^2
@@ -62,20 +57,10 @@ void main() {
     vec3 specColor = mix(vec3(0.65, 0.80, 1.0) * 0.45, vec3(1.0, 0.96, 0.85), dayFactor);
 
     // Luz de antorcha en mano o segunda mano reflejada suavemente en el agua
-    float maxHandLight = max(float(heldBlockLightValue), float(heldBlockLightValue2));
     vec3 torchLight = vec3(0.0);
-    
-    if (maxHandLight > 0.0) {
-        vec3 torchPos = vec3(heldBlockLightValue2 > heldBlockLightValue ? -0.35 : 0.35, -0.35, -0.2);
-        vec3 toLight = torchPos - viewPos;
-        float dist = length(toLight);
-        
-        float maxRadius = maxHandLight * 1.1;
-        float normDist = clamp(dist / maxRadius, 0.0, 1.0);
-        float edgeFade = 1.0 - smoothstep(0.35, 1.0, normDist);
-        float atten = (1.0 / (1.0 + 0.35 * dist + 0.06 * dist * dist)) * edgeFade;
-        
-        torchLight = vec3(1.0, 0.70, 0.38) * atten * (maxHandLight / 15.0) * 1.25;
+    if (handLight > 0.0) {
+        vec3 L; float dist;
+        torchLight = TORCH_COLOR * (torchAtten(viewPos, L, dist) * handLight * 1.25);
     }
 
     // Color de agua cristalina: tono aguamarina limpio, la textura original solo aporta matiz del bioma
