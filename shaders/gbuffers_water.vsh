@@ -1,12 +1,16 @@
 #version 150 compatibility
 
 uniform float frameTimeCounter;
+uniform mat4 gbufferModelViewInverse;
+uniform vec3 cameraPosition;
 
 out vec2 lmcoord;
 out vec2 texcoord;
 out vec4 glcolor;
 out vec3 viewPos;
 out vec3 worldNormal;
+out vec3 worldPos;     // Posición en mundo para micro-ondas estables (no se mueven con la cámara)
+out float waterTop;    // 1.0 = cara superior del agua, 0.0 = laterales
 
 void main() {
     vec4 position = gl_Vertex;
@@ -23,4 +27,8 @@ void main() {
     viewPos = (gl_ModelViewMatrix * position).xyz;
     vec3 n = gl_NormalMatrix * gl_Normal;
     worldNormal = length(n) > 0.0001 ? normalize(n) : vec3(0.0, 1.0, 0.0);
+
+    // Calculado por vértice (barato) en lugar de por píxel
+    worldPos = (gbufferModelViewInverse * vec4(viewPos, 1.0)).xyz + cameraPosition;
+    waterTop = step(0.9, gl_Normal.y);
 }
