@@ -1,3 +1,3 @@
 #version 150 compatibility
 
-#include "/lib/vsh_unlit.glsl"
+#include "/lib/prog/gbuffers_particles_vsh.glsl"

@@ -25,6 +25,23 @@ uniform vec3 sunPosition;         // espacio de vista, longitud 100 en Iris/Opti
 
 const vec3 TORCH_COLOR = vec3(1.0, 0.70, 0.38);
 
+// Lightmap con corrección por dimensión.
+// En el End (M1_END, carpeta world1/) la luz ambiente vanilla es muy morada
+// (y los "End flashes" la saturan aún más). Se lleva a un tono neutro con un
+// toque lavanda casi imperceptible. La luz de bloque (antorchas) conserva su color.
+#ifdef M1_END
+const vec3 END_AMBIENT = vec3(0.97, 0.95, 1.03);
+#endif
+vec3 m1Lightmap(sampler2D lm, vec2 uv) {
+    vec3 l = texture2D(lm, uv).rgb;
+#ifdef M1_END
+    float y = dot(l, vec3(0.299, 0.587, 0.114));
+    float ambientOnly = 1.0 - smoothstep(0.15, 0.65, uv.x);
+    l = mix(l, y * END_AMBIENT, 0.85 * ambientOnly);
+#endif
+    return l;
+}
+
 // Atenuación de antorcha en mano. Usa inversesqrt (1 instrucción en Apple GPU)
 // en lugar de length() + normalize() + divisiones.
 float torchAtten(vec3 viewPos, out vec3 L, out float dist) {
